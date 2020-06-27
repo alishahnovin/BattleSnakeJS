@@ -1,0 +1,234 @@
+<html>
+	<body>
+	   <canvas id="myCanvas" style="background:black;" />
+	</body>
+    <script language="javascript" type="text/javascript">
+		
+		var UP = 1;
+		var DOWN = -1;
+		var LEFT = -2;
+		var RIGHT = 2;
+		var STOP = 5;
+		
+		var game = {};
+		game.Setup = function(gridSize, squareSize, margin)
+		{
+			game.GridSize = gridSize;
+			game.SquareSize = squareSize;
+			game.Margin = margin;
+			
+			game.Canvas = document.getElementById('myCanvas');
+			game.Context = game.Canvas.getContext('2d');
+			
+			game.Canvas.width = game.GridSize*game.SquareSize + (margin*2);
+			game.Canvas.height = game.Canvas.width;		
+			game.Background = "#000000"
+			game.grid = new Array();
+			for(var row = 0; row<game.GridSize;row++)
+			{
+				var rowList = new Array();
+				for(var column=0;column<game.GridSize;column++)
+				{
+					rowList[column] = 0;
+					game.FillSquare(game.Background, row, column);
+				}
+				game.grid[row] = rowList;
+			}
+			
+			var strategy = function(GameState)
+			{
+				var r = Math.floor(Math.random() * Math.floor(5));
+				if (r==0 && GameState.Self.Direction!=DOWN && GameState.Self.Y>0)
+				{
+					return UP;
+				}
+				else if (r==1 && GameState.Self.Direction!=UP && GameState.Self.Y < GameState.Dimensions-1)
+				{
+					return DOWN;
+				}
+				else if (r==2 && GameState.Self.Direction!=RIGHT && GameState.Self.X > 0)
+				{
+					return LEFT;
+				}
+				else if (r==3 && GameState.Self.Direction!=LEFT && GameState.Self.X < GameState.Dimensions-1)
+				{
+					return RIGHT;
+				}
+				else if (r==4)
+				{
+					//return STOP;
+				}
+				return GameState.Self.Direction;
+			};
+			
+			game.Players = [
+			  game.CreatePlayer(1, 0,0, DOWN, "#FF0000", strategy)
+			, game.CreatePlayer(2, game.GridSize - 1, game.GridSize-1, UP, "#0000FF", strategy)
+			, game.CreatePlayer(3, game.GridSize - 1, 0, LEFT, "#00FF00", strategy)
+			, game.CreatePlayer(4, 0, game.GridSize-1, RIGHT, "#FFFF00", strategy)
+			];
+			game.Timer = setInterval(game.Tick, 50);
+		};
+		
+		game.Tick = function()
+		{
+			var allLost = true;
+			for(var i=0;i<game.Players.length;i++)
+		    {
+				if (!game.Players[i].HasLost)
+				{
+					allLost = false;
+				}
+		    }
+			if (allLost)
+			{
+				clearInterval(game.Timer);
+				
+				setTimeout(function() 
+				{
+					game.Setup(game.GridSize, game.SquareSize, game.Margin);
+				}, 3000);
+				return;
+			}
+		
+		   game.Players.sort(() => Math.random() - 0.5);
+		   for(var i=0;i<game.Players.length;i++)
+		   {
+			  game.Players[i].Advance();
+		   }
+		};
+		
+		game.FillSquare = function(color, x, y)
+		{
+			this.Context.fillStyle = color;
+			this.Context.fillRect(x * this.SquareSize + this.Margin, y*this.SquareSize+this.Margin, this.SquareSize, this.SquareSize);
+		};
+		
+		game.CreatePlayer = function(id, x, y, direction, color, strategy)
+		{
+			var player = {};
+			player.Id = id;
+			player.Color = color;
+			player.Direction = direction;
+			player.HasLost = false;
+			player.Length = 5;
+			player.Spaces = [];
+			player.Strategy = strategy;
+			
+			player.Move = function(x,y)
+			{
+				if (x<0 || y<0 || y>=game.GridSize || x>=game.GridSize || game.grid[x][y]!=0)
+				{
+					this.Lose();
+					return;
+				}
+			
+				this.X = x;
+				this.Y = y;
+				this.Spaces.push({ X:x, Y:y});
+				if (this.Spaces.length>this.Length)
+				{
+					var clearSpace = this.Spaces[0];
+					game.grid[clearSpace.X][clearSpace.Y] = 0;
+					game.FillSquare(game.Background, clearSpace.X, clearSpace.Y);
+					this.Spaces = this.Spaces.slice(1);
+				}
+				
+				game.grid[this.X][this.Y] = this;
+				this.Render();
+			};
+			
+			player.Lose = function()
+			{
+				this.HasLost = true;
+				this.Color = "#FFFFFF";
+				this.Render();
+			};
+			
+			player.Render = function()
+			{
+				game.FillSquare(this.Color, this.X, this.Y);
+			};
+			
+			player.Advance = function()
+			{
+				if(this.HasLost)
+				{
+					return;
+				}
+				
+				var opponents = [];
+				for(var i=0;i<game.Players.length;i++)
+				{
+					if (game.Players[i]!=this)
+					{
+						var opponent = game.Players[i];
+						opponents.push({ X:opponent.X, Y:opponent.Y, Direction:opponent.Direction, Spaces:opponent.Spaces, Length:opponent.Length });
+					}
+				}
+			
+				var direction = this.Strategy
+				(
+					{Self:{ X:this.X, Y:this.Y, Direction:this.Direction, Spaces:this.Spaces, Length:0 },
+					Opponents:opponents,
+					Apple:{ X:0, Y:0 },
+					Dimensions:game.GridSize
+					}
+				);
+				
+				//check valid direction returned...
+				if (direction == UP || direction == DOWN || direction==LEFT || direction==RIGHT || direction==STOP)
+				{
+					this.Direction = direction;
+				}
+			
+				if (this.Direction == STOP)
+				{
+					//do nothing...
+				}
+				else if (this.Direction == UP)
+				{
+					this.Move(this.X, this.Y-1);
+				}
+				else if (this.Direction == DOWN)
+				{
+					this.Move(this.X, this.Y+1);
+				}
+				else if (this.Direction == LEFT)
+				{
+					this.Move(this.X - 1, this.Y);
+				}
+				else if (this.Direction == RIGHT)
+				{
+					this.Move(this.X + 1, this.Y);
+				}
+			};
+			
+			player.ReceiveInput = function(e)
+			{
+				if (e.keyCode == this.UpKey)
+				{
+					this.Direction = UP;
+				}
+				else if (e.keyCode == this.DownKey)
+				{
+					this.Direction = DOWN;
+				}
+				else if (e.keyCode == this.LeftKey)
+				{
+					this.Direction = LEFT;
+				}
+				else if (e.keyCode == this.RightKey)
+				{
+					this.Direction = RIGHT;
+				}
+			};
+			
+			player.Move(x, y);
+			return player;
+		};
+				
+		game.Setup(80, 10, 5);
+		
+	</script>
+</html>
